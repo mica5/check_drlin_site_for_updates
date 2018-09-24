@@ -1,5 +1,6 @@
 # check_drlin_site_for_updates
-check Dr. Lin's site for file updates
+Check Dr. Lin's site for file updates.  
+This is for Dr. Lin's CS157A. It's difficult to keep track of all the changing files/assignments/requirements of this class, and this script is intended to make it easier to keep up with changes.
 
 # Usage
 
