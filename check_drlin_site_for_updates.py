@@ -7,6 +7,7 @@ directory to his site, this won't pick it up.
 Version 0.1
 2018-09-24
 """
+import time
 import argparse
 import urllib
 import os
@@ -78,9 +79,26 @@ class File:
             c.get_children()
 
 
+@contextmanager
+def micatime(name):
+    d = dict()
+    start = time.time()
+    print('beginning "{}" at {}'.format(name, datetime.datetime.now()))
+    yield d
+
+    total_seconds = time.time() - start
+    d['seconds'] = total_seconds
+    print('finished "{}" at {}; took {:.2f} seconds ({:.2f} minutes)'.format(
+        name,
+        datetime.datetime.now(),
+        total_seconds,
+        total_seconds / 60,
+    ))
+
+
 def check_site_for_updates():
     roots = list()
-    with micatime('downloading Dr. Lin website directory hierarchy') as runtime:
+    with micatime('downloading Dr. Lin website directory hierarchy'):
         for drlin_page_url in drlin_page_urls:
             roots.append(File(drlin_page_url))
 
