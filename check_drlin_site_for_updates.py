@@ -20,71 +20,90 @@ from bs4 import BeautifulSoup
 
 
 drlin_page_urls = [
-    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/notes/',
-    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/Project/',
-    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/Project/temp_data/',
-    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/Project/Homework/',
-    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/Project/DB1/',
-    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/Project/DB2/',
-    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/Project/DB3/',
+    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/notes',
+    'http://xanadu.cs.sjsu.edu/~drtylin/classes/cs157A/Project',
 ]
 
 
 class File:
+    files = list()
+    apache_pages = list()
     def __init__(self, url):
 
-        head = requests.head(url)
-        self.head = head
+        self.url = url
+        self.head = requests.head(url)
+        self.resp = None
+        self.visited = False
+        self.bs = None
 
         try:
-            self.moddate = parse(head.headers['Last-Modified']).replace(tzinfo=None)
+            # file (not apache directory)
+            self.moddate = parse(self.head.headers['Last-Modified']).replace(tzinfo=None)
+            is_apache_directory = False
         except KeyError:
+            is_apache_directory = True
             self.moddate = None
 
-        self.url = url
+        self.is_apache_directory = is_apache_directory
+        if is_apache_directory:
+            self.children = list()
+            self.apache_pages.append(self)
+
+        # file, not apache directory:
+        else:
+
+            self.children = None
+            self.files.append(self)
+
         self.filename = urllib.parse.unquote(os.path.basename(url))
+        self.get_children()
+
+    def get_children(self):
+        if self.resp is not None:
+            return
+        if self.visited:
+            return
+        if not self.is_apache_directory:
+            return
+        self.visited = True
+        self.resp = requests.get(self.url)
+        self.bs = BeautifulSoup(self.resp.content.decode(), features="html.parser")
+        for a in self.bs.findAll('a'):
+            url = self.url
+            if not url.endswith('/'):
+                url += '/'
+            full_file_url = urllib.parse.urljoin(url, a.attrs['href'])
+            self.children.append(File(full_file_url))
+        for c in self.children:
+            c.get_children()
 
 
 def check_site_for_updates():
-    all_site_files = list()
-    for drlin_page_url in drlin_page_urls:
+    roots = list()
+    with micatime('downloading Dr. Lin website directory hierarchy') as runtime:
+        for drlin_page_url in drlin_page_urls:
+            roots.append(File(drlin_page_url))
 
-        # get a main page directory listing
-        resp = requests.get(drlin_page_url)
+    pd.options.display.max_columns = 0
+    pd.options.display.max_colwidth = 0
+    pd.options.display.max_rows = -1
 
-        # parse out the page
-        bs = BeautifulSoup(resp.content.decode(), features="html.parser")
-
-        # grab the urls and updated dates of the files listed on the page
-        for a in bs.findAll('a'):
-            full_file_url = urllib.parse.urljoin(drlin_page_url, a.attrs['href'])
-            all_site_files.append(File(full_file_url))
-
-    now = datetime.datetime.now()
-    min_moddate = now
-    for f in all_site_files:
-        if not f.moddate:
-            continue
-        if f.moddate < min_moddate:
-            min_moddate = f.moddate
-
-    files = [
-        (f.moddate, f.filename, f.url)
-        for f in sorted(
-            all_site_files,
-            key=lambda f: (f.moddate if f.moddate else min_moddate),
-            reverse=True,
-        )
-    ]
+    rows = list()
+    is_file = False
+    modified_time = None
+    for ap in roots[0].apache_pages:
+        rows.append((is_file, ap.url, modified_time))
+    is_file = True
+    for f in roots[0].files:
+        modified_time = str(f.moddate)
+        rows.append((is_file, f.url, modified_time))
     df = pd.DataFrame(
-        files,
-        columns='moddate filename url'.split(),
-    ).set_index('moddate')
+        rows,
+        columns='is_file url modified_time'.split(),
+    ).sort_values('modified_time', ascending=False)
 
-    df['mod_ago'] = now - df.index
-
-    return df
-
+    df['sorter'] = df.apply(lambda r: (not r.is_file, r.modified_time), axis=1)
+    return df.sort_values('sorter', ascending=False).drop('sorter', axis=1)
 
 @contextmanager
 def unlimited_df_colwidth():
