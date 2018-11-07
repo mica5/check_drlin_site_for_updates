@@ -120,7 +120,7 @@ def check_site_for_updates():
         columns='is_file url modified_time'.split(),
     ).sort_values('modified_time', ascending=False)
 
-    df['sorter'] = df.apply(lambda r: (not r.is_file, r.modified_time), axis=1)
+    df['sorter'] = df.apply(lambda r: (not r.is_file, r.modified_time, r.url), axis=1)
     return df.sort_values('sorter', ascending=False).drop('sorter', axis=1)
 
 @contextmanager
